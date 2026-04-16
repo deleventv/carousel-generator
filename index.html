@@ -10,6 +10,9 @@
       --text: #333333;
       --accent: #e85d75;
       --border: #f3d9df;
+      --slide-width: 1080px;
+      --slide-height: 1350px;
+      --slide-padding: 34px;
     }
 
     * { box-sizing: border-box; }
@@ -129,11 +132,12 @@
       background: var(--bg);
       color: var(--text);
       border-radius: 18px;
-      padding: clamp(20px, 6%, 34px);
+      padding: var(--slide-padding);
       aspect-ratio: 4 / 5;
       border: 1px solid #f0e5e5;
       display: flex;
       flex-direction: column;
+      justify-content: flex-start;
       overflow: hidden;
     }
 
@@ -156,12 +160,27 @@
     .carousel-content {
       display: flex;
       flex-direction: column;
+      justify-content: flex-start;
       height: 100%;
     }
 
     .carousel-media-space {
       flex: 1;
       min-height: 24%;
+    }
+
+    .carousel-slide.export-slide {
+      width: var(--slide-width);
+      height: var(--slide-height);
+      min-height: var(--slide-height);
+      max-height: var(--slide-height);
+      aspect-ratio: auto;
+      overflow: visible;
+    }
+
+    .carousel-slide.export-slide .carousel-content {
+      height: 100%;
+      overflow: visible;
     }
 
     .status {
@@ -544,20 +563,21 @@ Elke waarde: 1 korte Nederlandse zin zonder markdown.`
 
       for (let i = 0; i < slides.length; i++) {
         const exportSlide = slides[i].cloneNode(true);
-        exportSlide.style.width = '1080px';
-        exportSlide.style.height = '1350px';
-        exportSlide.style.aspectRatio = 'auto';
+        exportSlide.classList.add('export-slide');
         exportSlide.style.position = 'fixed';
         exportSlide.style.left = '-99999px';
         exportSlide.style.top = '0';
         exportSlide.style.margin = '0';
+        exportSlide.style.transform = 'none';
+        exportSlide.style.opacity = '1';
+        exportSlide.style.pointerEvents = 'none';
         document.body.appendChild(exportSlide);
 
         const canvas = await html2canvas(exportSlide, {
           backgroundColor: '#ffffff',
-          scale: 1,
-          width: 1080,
-          height: 1350
+          scale: 2,
+          useCORS: true,
+          logging: false
         });
 
         exportSlide.remove();
