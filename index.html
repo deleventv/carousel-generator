@@ -312,31 +312,125 @@ Belangrijk:
       statusEl.textContent = msg;
     }
 
-    function splitToSlides(text) {
-      const out = Array.from({ length: 6 }, () => '');
-      const regex = /Slide\s*(\d)\s*:\s*([\s\S]*?)(?=\n\s*Slide\s*\d\s*:|$)/gi;
-      let match;
-      while ((match = regex.exec(text)) !== null) {
-        const i = Number(match[1]) - 1;
-        if (i >= 0 && i < 6) out[i] = match[2].trim();
-      }
-      return out;
+    const dutchStopwords = new Set([
+      'de', 'het', 'een', 'en', 'van', 'op', 'in', 'te', 'met', 'voor', 'dat', 'die', 'dit', 'is', 'zijn',
+      'was', 'wordt', 'door', 'als', 'om', 'aan', 'bij', 'naar', 'uit', 'maar', 'dan', 'ook', 'nog',
+      'er', 'je', 'we', 'ze', 'hun', 'ons', 'ik', 'hij', 'zij', 'u', 'tot', 'niet', 'wel', 'kan', 'kunnen'
+    ]);
+
+    function splitSentences(source) {
+      return source
+        .replace(/\s+/g, ' ')
+        .split(/(?<=[.!?])\s+|\n+/)
+        .map(s => s.trim())
+        .filter(Boolean);
     }
 
-    function fallbackGenerate(source) {
-      const short = source.replace(/\s+/g, ' ').trim().slice(0, 260);
-      const core = short || 'Nieuwe AI-update uit het nieuws';
+    function cropWords(text, maxWords = 16) {
+      const words = text.trim().split(/\s+/).filter(Boolean);
+      if (!words.length) return '';
+      if (words.length <= maxWords) return words.join(' ');
+      return `${words.slice(0, maxWords).join(' ')}…`;
+    }
+
+    function findSentence(sentences, patterns) {
+      return sentences.find((s) => patterns.some((p) => p.test(s)));
+    }
+
+    function topKeywords(source, limit = 3) {
+      const words = source
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
+        .split(/\s+/)
+        .filter(w => w.length > 3 && !dutchStopwords.has(w));
+
+      const counts = new Map();
+      for (const word of words) {
+        counts.set(word, (counts.get(word) || 0) + 1);
+      }
+
+      return [...counts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, limit)
+        .map(([word]) => word);
+    }
+
+    function buildStoryStructure(source) {
+      const cleaned = source.replace(/\s+/g, ' ').trim();
+      const sentences = splitSentences(source);
+      const keywords = topKeywords(source);
+      const tooShort = cleaned.length < 20 || cleaned.split(/\s+/).length < 4;
+      const first = sentences[0] || cleaned;
+      const second = sentences[1] || first;
+      const third = sentences[2] || second;
+      const last = sentences[sentences.length - 1] || first;
+      const topic = keywords.length ? keywords.join(', ') : cropWords(first, 5).toLowerCase();
+
+      return {
+        tooShort,
+        sourceSummary: cropWords(cleaned, 24),
+        main_point: cropWords(first, 18),
+        conflict: cropWords(
+          findSentence(sentences, [/maar/i, /toch/i, /risico/i, /probleem/i, /zorg/i, /spann/i, /gevolg/i]) || second,
+          18
+        ),
+        old_way: cropWords(
+          findSentence(sentences, [/eerst/i, /vroeger/i, /voorheen/i, /handmatig/i, /losse/i, /traditioneel/i]) || second,
+          18
+        ),
+        new_way: cropWords(
+          findSentence(sentences, [/nu/i, /nieuw/i, /verandert/i, /automatisch/i, /sneller/i, /integreert/i]) || third,
+          18
+        ),
+        gain_loss: cropWords(
+          findSentence(sentences, [/voordeel/i, /nadeel/i, /winst/i, /verlies/i, /maar/i, /risico/i]) || `${third} ${last}`,
+          20
+        ),
+        meaning: cropWords(
+          findSentence(sentences, [/betekent/i, /impact/i, /gevolg/i, /daarom/i, /uiteindelijk/i]) || last,
+          20
+        ),
+        topic
+      };
+    }
+
+    function slidesFromStructure(structure) {
+      if (structure.tooShort) {
+        return [
+          `Te weinig context: ${cropWords(structure.sourceSummary, 6) || 'invoer'}`,
+          `Wat er gebeurde is nog onduidelijk.\nInput: "${structure.sourceSummary || 'Lege of erg korte tekst'}".`,
+          `Hoe het eerst ging kunnen we niet afleiden.\nEr staat geen eerdere situatie in de input.`,
+          `Wat nu verandert blijft ook vaag.\nEr is te weinig detail om een echte omslag te tonen.`,
+          `Winst en verlies zijn nog niet te wegen.\nMeer feiten zijn nodig voor een eerlijke balans.`,
+          `Betekenis: eerst meer context verzamelen.\nDan wordt de carousel inhoudelijk en consistent.`
+        ];
+      }
+
       return [
-        'AI schuift stil je werkdag in',
-        `Kort nieuws: ${core}.\n- Feit: er is een nieuwe stap gezet\n- Effect: mensen merken dit sneller`,
-        'Eerst deed je dit met losse tools.\nOf handmatig, stap voor stap.',
-        'Nu zit meer in één flow.\nDat scheelt klikken en wachttijd.',
-        'Winst: sneller klaar en minder gedoe.\nVerlies: je moet output blijven controleren.',
-        'Dit is geen wondermiddel.\nWel een praktische verschuiving in hoe we werken.'
+        `${cropWords(structure.conflict, 8)}`,
+        `Wat is er gebeurd:\n${structure.main_point}.\nContext: ${cropWords(structure.sourceSummary, 12)}.`,
+        `Hoe het eerst ging:\n${structure.old_way}.\nFocus lag op: ${structure.topic}.`,
+        `Wat er nu verandert:\n${structure.new_way}.\nDat schuift het proces zichtbaar op.`,
+        `Winst en verlies:\nWinst: ${cropWords(structure.gain_loss, 10)}.\nLet op: ${cropWords(structure.conflict, 10)}.`,
+        `Wat dit echt betekent:\n${structure.meaning}.\nKernpunt: ${cropWords(structure.main_point, 10)}.`
       ];
     }
 
-    async function generateWithOpenAI(source, apiKey, model) {
+    function mergeStructure(base, patch) {
+      if (!patch || typeof patch !== 'object') return base;
+      const next = { ...base };
+      for (const key of ['main_point', 'conflict', 'old_way', 'new_way', 'gain_loss', 'meaning']) {
+        if (typeof patch[key] === 'string' && patch[key].trim()) {
+          next[key] = cropWords(patch[key], 24);
+        }
+      }
+      next.tooShort = base.tooShort;
+      next.sourceSummary = base.sourceSummary;
+      next.topic = base.topic;
+      return next;
+    }
+
+    async function generateWithOpenAI(source, apiKey, model, baseStructure) {
       const res = await fetch('https://api.openai.com/v1/responses', {
         method: 'POST',
         headers: {
@@ -348,11 +442,16 @@ Belangrijk:
           input: [
             {
               role: 'system',
-              content: generationPrompt
+              content: `${generationPrompt}
+
+Geef GEEN slides terug.
+Geef alleen JSON met exact deze keys:
+main_point, conflict, old_way, new_way, gain_loss, meaning
+Elke waarde: 1 korte Nederlandse zin zonder markdown.`
             },
             {
               role: 'user',
-              content: `Input:\n${source}`
+              content: `Input:\n${source}\n\nHuidige structuur (verbeter waar nodig):\n${JSON.stringify(baseStructure)}`
             }
           ],
           temperature: 0.5
@@ -365,8 +464,12 @@ Belangrijk:
       }
 
       const data = await res.json();
-      const text = data.output_text || '';
-      return splitToSlides(text);
+      const text = (data.output_text || '').trim();
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('Model-output bevatte geen geldige structuur-JSON.');
+      }
+      return JSON.parse(jsonMatch[0]);
     }
 
     function renderEditors(values) {
@@ -412,18 +515,29 @@ Belangrijk:
       }
     }
 
+    let previewBuilt = false;
+
     async function downloadPreviewAsPng() {
       if (!preview.children.length) {
-        setStatus('Bouw eerst de carousel-preview.');
+        setStatus('Nog geen preview gevonden. Klik eerst op "Bouw carousel".');
         return;
       }
-      setStatus('PNG wordt gemaakt...');
-      const canvas = await html2canvas(preview, { backgroundColor: '#ffffff', scale: 2 });
-      const link = document.createElement('a');
-      link.download = 'carousel-preview.png';
-      link.href = canvas.toDataURL('image/png');
-      link.click();
-      setStatus('Download gestart.');
+      if (!previewBuilt) {
+        setStatus('Preview is nog niet opgebouwd. Klik eerst op "Bouw carousel".');
+        return;
+      }
+
+      setStatus('PNG-bestanden per slide worden gemaakt...');
+      const slides = Array.from(preview.querySelectorAll('.carousel-slide'));
+
+      for (let i = 0; i < slides.length; i++) {
+        const canvas = await html2canvas(slides[i], { backgroundColor: '#ffffff', scale: 2 });
+        const link = document.createElement('a');
+        link.download = `slide-${i + 1}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+      }
+      setStatus('Downloads gestart: slide-1.png t/m slide-6.png.');
     }
 
     document.getElementById('generateBtn').addEventListener('click', async () => {
@@ -437,27 +551,31 @@ Belangrijk:
       }
 
       setStatus('Voorstel wordt gegenereerd...');
+      previewBuilt = false;
+      preview.innerHTML = '';
       try {
-        let slides;
+        const localStructure = buildStoryStructure(source);
+        let finalStructure = localStructure;
+
         if (apiKey) {
-          slides = await generateWithOpenAI(source, apiKey, model);
-          if (slides.every(s => !s)) {
-            throw new Error('Model-output kon niet worden gelezen als 6 slides.');
-          }
-          setStatus('AI-voorstel gegenereerd. Je kunt alles aanpassen.');
+          const aiStructure = await generateWithOpenAI(source, apiKey, model, localStructure);
+          finalStructure = mergeStructure(localStructure, aiStructure);
+          setStatus('AI-voorstel gegenereerd op basis van één gedeelde inhoudsstructuur.');
         } else {
-          slides = fallbackGenerate(source);
-          setStatus('Voorstel gemaakt zonder API key (simpele lokale fallback).');
+          setStatus('Voorstel gemaakt zonder API key (dynamische lokale analyse).');
         }
+        const slides = slidesFromStructure(finalStructure);
         renderEditors(slides);
       } catch (err) {
-        setStatus(`Generatie mislukt: ${err.message}`);
-        renderEditors(fallbackGenerate(source));
+        const fallbackStructure = buildStoryStructure(source);
+        setStatus(`AI-generatie mislukt, lokale structuur gebruikt: ${err.message}`);
+        renderEditors(slidesFromStructure(fallbackStructure));
       }
     });
 
     document.getElementById('buildBtn').addEventListener('click', () => {
       renderPreview();
+      previewBuilt = true;
       setStatus('Carousel-preview gebouwd.');
     });
 
