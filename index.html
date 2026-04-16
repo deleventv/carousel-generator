@@ -120,7 +120,7 @@
 
     #preview {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
       gap: 16px;
       margin-top: 18px;
     }
@@ -129,12 +129,12 @@
       background: var(--bg);
       color: var(--text);
       border-radius: 18px;
-      padding: 26px;
-      min-height: 240px;
+      padding: clamp(20px, 6%, 34px);
+      aspect-ratio: 4 / 5;
       border: 1px solid #f0e5e5;
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
+      overflow: hidden;
     }
 
     .carousel-title {
@@ -149,7 +149,19 @@
     .carousel-body {
       margin-top: 18px;
       white-space: pre-wrap;
-      font-size: 1rem;
+      font-size: 0.93rem;
+      line-height: 1.5;
+    }
+
+    .carousel-content {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    .carousel-media-space {
+      flex: 1;
+      min-height: 24%;
     }
 
     .status {
@@ -505,11 +517,11 @@ Elke waarde: 1 korte Nederlandse zin zonder markdown.`
         const slide = document.createElement('article');
         slide.className = 'carousel-slide';
         slide.innerHTML = `
-          <div>
+          <div class="carousel-content">
             <h3 class="carousel-title">${highlightOneWord(title)}</h3>
             <div class="carousel-body">${body}</div>
+            <div class="carousel-media-space" aria-hidden="true"></div>
           </div>
-          <small>Slide ${i}/6</small>
         `;
         preview.appendChild(slide);
       }
@@ -531,7 +543,24 @@ Elke waarde: 1 korte Nederlandse zin zonder markdown.`
       const slides = Array.from(preview.querySelectorAll('.carousel-slide'));
 
       for (let i = 0; i < slides.length; i++) {
-        const canvas = await html2canvas(slides[i], { backgroundColor: '#ffffff', scale: 2 });
+        const exportSlide = slides[i].cloneNode(true);
+        exportSlide.style.width = '1080px';
+        exportSlide.style.height = '1350px';
+        exportSlide.style.aspectRatio = 'auto';
+        exportSlide.style.position = 'fixed';
+        exportSlide.style.left = '-99999px';
+        exportSlide.style.top = '0';
+        exportSlide.style.margin = '0';
+        document.body.appendChild(exportSlide);
+
+        const canvas = await html2canvas(exportSlide, {
+          backgroundColor: '#ffffff',
+          scale: 1,
+          width: 1080,
+          height: 1350
+        });
+
+        exportSlide.remove();
         const link = document.createElement('a');
         link.download = `slide-${i + 1}.png`;
         link.href = canvas.toDataURL('image/png');
